@@ -1,9 +1,12 @@
 let sb=null,cloudReady=false,currentUser=null,currentHouseholdId=null,currentMemberRole=null,realtimeChannel=null;
 
-function ensureClient(){
+async function ensureClient(){
   const cfg=window.KAMAOUT_CONFIG||{};
-  if(!window.supabase||!cfg.supabaseUrl||!cfg.supabaseKey)return false;
-  if(!sb)sb=window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseKey);
+  if(!cfg.supabaseUrl||!cfg.supabaseKey)return false;
+  if(!sb){
+    const mod=await import('https://esm.sh/@supabase/supabase-js@2');
+    sb=mod.createClient(cfg.supabaseUrl,cfg.supabaseKey);
+  }
   return true;
 }
 
@@ -43,4 +46,4 @@ async function cloudUpdateIncome(x){const {error}=await sb.from('income_sources'
 
 async function accountSheet(){const {data:members}=await sb.from('household_members').select('user_id,role').eq('household_id',currentHouseholdId);openSheet(`<div class="sheetBack" id="overlay"><div class="sheet"><h2>החשבון והמשפחה</h2><div class="accountInfo">${currentUser.email}<br><small>${state.household.name} · ${members?.length||1} משתמשים</small></div>${currentMemberRole==='owner'?`<label>הזמן משתמש נוסף</label><input id="inviteEmail" type="email" placeholder="אימייל (אופציונלי)"><button class="save" id="makeInvite">צור לינק הזמנה</button><div id="inviteResult"></div>`:''}<button class="authSecondary" id="logoutBtn" style="width:100%;margin-top:12px">התנתק</button></div></div>`);if(document.getElementById('makeInvite'))makeInvite.onclick=async()=>{const {data,error}=await sb.rpc('create_household_invite',{hid:currentHouseholdId,email:inviteEmail.value.trim()||null});if(error)return alert(error.message);const link=`${location.origin}${location.pathname}?invite=${data}`;inviteResult.innerHTML=`<div class="inviteBox"><strong>לינק הזמנה</strong><input id="inviteLink" value="${link}" readonly><button id="copyInvite" class="authSecondary">העתק</button></div>`;copyInvite.onclick=()=>navigator.clipboard.writeText(link).then(()=>alert('הועתק'))};logoutBtn.onclick=async()=>{await sb.auth.signOut();location.reload()}}
 
-async function initCloud(){if(!ensureClient()){cloudReady=false;render();return false}const {data:{session}}=await sb.auth.getSession();if(!session){authScreen();return true}currentUser=session.user;await loadCloudState();return true}
+async function initCloud(){const ok=await ensureClient();if(!ok){cloudReady=false;render();return false}const {data:{session}}=await sb.auth.getSession();if(!session){authScreen();return true}currentUser=session.user;await loadCloudState();return true}
