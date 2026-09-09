@@ -6,7 +6,7 @@ function loadState(){try{const x=localStorage.getItem('kamaout-v3-state');return
 function saveState(){localStorage.setItem('kamaout-v3-state',JSON.stringify(state));render()}
 function ils(n){return '₪'+Math.round(Number(n)||0).toLocaleString('he-IL')}
 function categoryKey(c){return c?.key||c?.id||''}
-function isFixedCategory(c){return FIXED_CATEGORY_KEYS.has(categoryKey(c))}
+function isFixedCategory(c){if(c?.trackingMode)return c.trackingMode==='automatic';return FIXED_CATEGORY_KEYS.has(categoryKey(c))}
 function fixedCategories(){return state.categories.filter(isFixedCategory)}
 function spendCategories(){return state.categories.filter(c=>!isFixedCategory(c))}
 function rawActual(id){return state.transactions.filter(t=>t.categoryId===id&&t.month===state.month).reduce((s,t)=>s+Number(t.amount),0)}
@@ -24,6 +24,7 @@ function predictedBalance(){return incomeBudget()-expenseBudget()}
 function pct(a,b){return b?Math.round(a/b*100):0}
 function monthLabel(){const [y,m]=(state.month||new Date().toISOString().slice(0,7)).split('-').map(Number);return new Intl.DateTimeFormat('he-IL',{month:'long',year:'numeric'}).format(new Date(y,m-1,1))}
 function groupData(){const m={};state.categories.forEach(c=>{m[c.group]??={budget:0,actual:0};m[c.group].budget+=Number(c.budget);m[c.group].actual+=actual(c.id)});return m}
+function spendGroupData(){const m={};spendCategories().forEach(c=>{m[c.group]??={budget:0,actual:0};m[c.group].budget+=Number(c.budget);m[c.group].actual+=rawActual(c.id)});return m}
 function alerts(){return spendCategories().map(c=>({c,a:rawActual(c.id),threshold:c.alertAt||c.budget,p:pct(rawActual(c.id),c.budget)})).filter(x=>x.a>x.threshold||x.p>=80).sort((a,b)=>b.p-a.p)}
 function flexTotals(){const m={fixed:0,medium:0,high:0};state.categories.forEach(c=>m[c.flex]+=Number(c.budget));return m}
 function txs(){return state.transactions.filter(t=>t.month===state.month).sort((a,b)=>new Date(b.date)-new Date(a.date))}
