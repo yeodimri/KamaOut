@@ -1,18 +1,16 @@
-const SUPABASE_URL='https://ukjtrhwalayxznepzbvq.supabase.co';
-const SUPABASE_KEY='__SUPABASE_PUBLISHABLE_KEY__';
-let sb=null, cloudReady=false, currentUser=null, currentHouseholdId=null, currentMemberRole=null, realtimeChannel=null;
+let sb=null,cloudReady=false,currentUser=null,currentHouseholdId=null,currentMemberRole=null,realtimeChannel=null;
 
 function ensureClient(){
-  if(!window.supabase) throw new Error('Supabase client not loaded');
-  if(SUPABASE_KEY.startsWith('__')) return false;
-  if(!sb) sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  const cfg=window.KAMAOUT_CONFIG||{};
+  if(!window.supabase||!cfg.supabaseUrl||!cfg.supabaseKey)return false;
+  if(!sb)sb=window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseKey);
   return true;
 }
 
 function authScreen(message=''){
   document.getElementById('app').innerHTML=`<div class="authShell"><div class="authCard"><div class="authBrand">KamaOut</div><div class="authTag">כמה יצא לנו?</div>${message?`<div class="authMsg">${message}</div>`:''}<div class="authTabs"><button id="showLogin" class="active">כניסה</button><button id="showSignup">הרשמה</button></div><label>אימייל</label><input id="authEmail" type="email" autocomplete="email"><label>סיסמה</label><input id="authPassword" type="password" autocomplete="current-password"><button id="authSubmit" class="authPrimary">כניסה</button></div></div>`;
   let mode='login';
-  const setMode=m=>{mode=m;document.getElementById('showLogin').classList.toggle('active',m==='login');document.getElementById('showSignup').classList.toggle('active',m==='signup');document.getElementById('authSubmit').textContent=m==='login'?'כניסה':'יצירת חשבון'};
+  const setMode=m=>{mode=m;showLogin.classList.toggle('active',m==='login');showSignup.classList.toggle('active',m==='signup');authSubmit.textContent=m==='login'?'כניסה':'יצירת חשבון'};
   showLogin.onclick=()=>setMode('login');showSignup.onclick=()=>setMode('signup');
   authSubmit.onclick=async()=>{const email=authEmail.value.trim(),password=authPassword.value;if(!email||password.length<6)return alert('צריך אימייל וסיסמה של לפחות 6 תווים');const r=mode==='login'?await sb.auth.signInWithPassword({email,password}):await sb.auth.signUp({email,password,options:{emailRedirectTo:location.origin}});if(r.error)return alert(r.error.message);if(mode==='signup'&&!r.data.session)return authScreen('שלחנו מייל לאישור החשבון. אחרי האישור חזור לכאן והיכנס.');await initCloud()};
 }
@@ -24,8 +22,8 @@ function onboardingScreen(invite=''){
 }
 
 async function seedDefaultHousehold(){
-  await sb.from('income_sources').insert(DEFAULT_STATE.incomes.map((x,i)=>({household_id:currentHouseholdId,name:x.name,monthly_budget:x.budget,sort_order:i})));
-  await sb.from('categories').insert(DEFAULT_STATE.categories.map((c,i)=>({household_id:currentHouseholdId,key:c.id,group_name:c.group,name:c.name,monthly_budget:c.budget,flexibility:c.flex,visibility:c.visibility,alert_at:c.alertAt||null,sort_order:i})));
+  const r1=await sb.from('income_sources').insert(DEFAULT_STATE.incomes.map((x,i)=>({household_id:currentHouseholdId,name:x.name,monthly_budget:x.budget,sort_order:i})));if(r1.error)console.error(r1.error);
+  const r2=await sb.from('categories').insert(DEFAULT_STATE.categories.map((c,i)=>({household_id:currentHouseholdId,key:c.id,group_name:c.group,name:c.name,monthly_budget:c.budget,flexibility:c.flex,visibility:c.visibility,alert_at:c.alertAt||null,sort_order:i})));if(r2.error)console.error(r2.error);
 }
 
 async function loadCloudState(){
@@ -38,7 +36,6 @@ async function loadCloudState(){
 }
 
 function subscribeRealtime(){if(realtimeChannel)sb.removeChannel(realtimeChannel);realtimeChannel=sb.channel('kamaout-household').on('postgres_changes',{event:'*',schema:'public',table:'transactions',filter:`household_id=eq.${currentHouseholdId}`},()=>loadCloudState()).on('postgres_changes',{event:'*',schema:'public',table:'categories',filter:`household_id=eq.${currentHouseholdId}`},()=>loadCloudState()).on('postgres_changes',{event:'*',schema:'public',table:'income_sources',filter:`household_id=eq.${currentHouseholdId}`},()=>loadCloudState()).subscribe()}
-
 async function cloudAddTransaction(t){const {error}=await sb.from('transactions').insert({household_id:currentHouseholdId,created_by:currentUser.id,category_id:t.categoryId,amount:t.amount,merchant:t.merchant,payer_name:t.person,payment_method:t.payment,transaction_date:new Date(t.date).toISOString().slice(0,10)});if(error)throw error;await loadCloudState()}
 async function cloudUpdateCategory(c){const {error}=await sb.from('categories').update({monthly_budget:c.budget,flexibility:c.flex,visibility:c.visibility}).eq('id',c.id);if(error)throw error;await loadCloudState()}
 async function cloudDeleteTransaction(id){const {error}=await sb.from('transactions').delete().eq('id',id);if(error)throw error;await loadCloudState()}
@@ -46,4 +43,4 @@ async function cloudUpdateIncome(x){const {error}=await sb.from('income_sources'
 
 async function accountSheet(){const {data:members}=await sb.from('household_members').select('user_id,role').eq('household_id',currentHouseholdId);openSheet(`<div class="sheetBack" id="overlay"><div class="sheet"><h2>החשבון והמשפחה</h2><div class="accountInfo">${currentUser.email}<br><small>${state.household.name} · ${members?.length||1} משתמשים</small></div>${currentMemberRole==='owner'?`<label>הזמן משתמש נוסף</label><input id="inviteEmail" type="email" placeholder="אימייל (אופציונלי)"><button class="save" id="makeInvite">צור לינק הזמנה</button><div id="inviteResult"></div>`:''}<button class="authSecondary" id="logoutBtn" style="width:100%;margin-top:12px">התנתק</button></div></div>`);if(document.getElementById('makeInvite'))makeInvite.onclick=async()=>{const {data,error}=await sb.rpc('create_household_invite',{hid:currentHouseholdId,email:inviteEmail.value.trim()||null});if(error)return alert(error.message);const link=`${location.origin}${location.pathname}?invite=${data}`;inviteResult.innerHTML=`<div class="inviteBox"><strong>לינק הזמנה</strong><input id="inviteLink" value="${link}" readonly><button id="copyInvite" class="authSecondary">העתק</button></div>`;copyInvite.onclick=()=>navigator.clipboard.writeText(link).then(()=>alert('הועתק'))};logoutBtn.onclick=async()=>{await sb.auth.signOut();location.reload()}}
 
-async function initCloud(){if(!ensureClient()){document.getElementById('app').innerHTML='<div class="authShell"><div class="authCard"><div class="authBrand">KamaOut</div><div class="authMsg">חיבור הענן כמעט מוכן. חסר Publishable Key בהגדרת האפליקציה.</div></div></div>';return}const {data:{session}}=await sb.auth.getSession();if(!session)return authScreen();currentUser=session.user;await loadCloudState()}
+async function initCloud(){if(!ensureClient()){cloudReady=false;render();return false}const {data:{session}}=await sb.auth.getSession();if(!session){authScreen();return true}currentUser=session.user;await loadCloudState();return true}
