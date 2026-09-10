@@ -23,6 +23,7 @@ function visibleBudget(){return expenseBudget()-hiddenBudget()}
 function predictedBalance(){return incomeBudget()-expenseBudget()}
 function pct(a,b){return b?Math.round(a/b*100):0}
 function monthLabel(){const [y,m]=(state.month||new Date().toISOString().slice(0,7)).split('-').map(Number);return new Intl.DateTimeFormat('he-IL',{month:'long',year:'numeric'}).format(new Date(y,m-1,1))}
+function monthRangeLabel(){const [y,m]=(state.month||new Date().toISOString().slice(0,7)).split('-').map(Number),last=new Date(y,m,0).getDate(),mn=new Intl.DateTimeFormat('he-IL',{month:'long'}).format(new Date(y,m-1,1));return `1–${last} ב${mn} ${y}`}
 function groupData(){const m={};state.categories.forEach(c=>{m[c.group]??={budget:0,actual:0};m[c.group].budget+=Number(c.budget);m[c.group].actual+=actual(c.id)});return m}
 function spendGroupData(){const m={};spendCategories().forEach(c=>{m[c.group]??={budget:0,actual:0};m[c.group].budget+=Number(c.budget);m[c.group].actual+=rawActual(c.id)});return m}
 function alerts(){return spendCategories().map(c=>({c,a:rawActual(c.id),threshold:c.alertAt||c.budget,p:pct(rawActual(c.id),c.budget)})).filter(x=>x.a>x.threshold||x.p>=80).sort((a,b)=>b.p-a.p)}
